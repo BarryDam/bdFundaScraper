@@ -82,8 +82,9 @@
 			$this->strCurrentPageType = strtoupper($getStrType);
 			// Do the CURL request
 			$this->strCURLcontent = $this->curl($getStrFundaURL);
+			$e = '<pre>'.print_r($this->curlStatus,true).'</pre>';
 			if ($this->strCURLcontent === false)
-				throw new Exception("No content for $getStrFundaURL", 1);		
+				throw new Exception("No content for $this->strURL $e", 1);		
 		}
 
 		/**
@@ -205,8 +206,15 @@
 					case 'strPostalCode' :
 					case 'strCity' :
 						preg_match_all('@</h1>[^<]*?<p>(.*?)</p>@is', $this->strCURLcontent, $arrMatches);
-						if (empty($arrMatches[1][0]))
+						if (empty($arrMatches[1][0])) {
+							// no match try to get from URL
+							if ($getVar == 'strCity') {
+								$arr = explode('/', str_replace('/'.$this->strHouseID.'/', '',  $this->strURL));
+								return ucFirst(end($arr));
+							}
 							return;
+						}
+							
 						$arr = preg_split("/\\r\\n|\\r|\\n/", $arrMatches[1][0]);
 						$str = $arr[0];
 						if ($getVar == 'strPostalCode')
@@ -315,6 +323,7 @@
 					case 'arrPictures':
 						$pattern		= '@<div id="gallery-carousel" class="carousel">(.*?)</div>@is';
 						preg_match_all($pattern, $this->strCURLcontent, $block);
+						if (empty($block[0][0])) return;
 						$block			= $block[0][0];
 						//<a href="http://images.funda.nl/valentinamedia/007/675/453_groot.jpg" id="ctl00_ContentPlaceHolderMain_FotoVergroter_ha" target="PhotoFrame"><img class='thumb' src='http://images.funda.nl/valentinamedia/007/675/453_klein.jpg' alt="geen"' title="geen"' /></a>
 						$pattern		= '@<a href="(.*?)".*?><span><img.*?src="(.*?)".*?@is';
@@ -346,39 +355,63 @@
 			}
 		}
 
+		private $curlStatus = array();
 		public function curl($getURL) 
 		{
+			$getURL = trim($getURL);
 			$contents = false;
 			$ch = curl_init($getURL);
 			curl_setopt($ch, CURLOPT_HEADER, 0);
 			curl_setopt($ch, CURLOPT_HTTPAUTH, CURLAUTH_BASIC);
-			curl_setopt($ch, CURLOPT_USERAGENT, "Mozilla/5.0 (Windows NT 6.1; rv:7.0.1) Gecko/20100101 Firefox/7.0.1"); // TROLOLO
+			curl_setopt ($ch, CURLOPT_USERAGENT, "Mozilla/5.0 (Windows NT 6.1; rv:7.0.1) Gecko/20100101 Firefox/7.0.1");
 			curl_setopt($ch, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_1_1);
 			curl_setopt($ch, CURLOPT_HEADER, 1);
 			curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
 			$rawContent		= curl_exec($ch);
 			$http_status	= curl_getinfo($ch, CURLINFO_HTTP_CODE);
 			// status OK
-			if ($http_status == 200) {
+			if (in_array($http_status, array(200)) ) {
 				list($headers, $contents)	= explode('<!DOCTYPE', $rawContent);
 				$contents		= '<!DOCTYPE'.$contents;
 			}
-			$this->strURL = $getURL;
+			$this->curlStatus[] = array(
+				'url' => $getURL, 
+				'status' => $http_status
+			); 
+			curl_close($ch);
+			$this->strURL 			= $getURL;
 			// redirect perform new curl
 			if ($http_status == 301 || $http_status == 302) {
-				$new_url	= preg_replace('/.*Location:\s([^\n]+).*/ims', '$1', $headers);
+				$new_url	= preg_replace('/.*Location:\s([^\n]+).*/ims', '$1', $rawContent);
+				if (strpos(strtolower($new_url), 'http://www.funda.nl/') !== 0) 
+					$new_url = 'http://www.funda.nl'.$new_url;
 				$contents	= self::curl($new_url);
 			}
-			curl_close($ch);
+			
 			return $contents;
 		}
 
 	/**
 	 * Static create
 	 */
-		public static function createHomeObjectByURL($getURL) 
+		public static function createHomeObjectByURL($getURLorHouseID) 
 		{
-			return new bdFundaScraper($getURL, 'HOME');
+			
+			if (strpos(strtolower($getURLorHouseID), 'http://www.funda.nl/') === 0) {
+				return new bdFundaScraper($getURLorHouseID, 'HOME');
+			} else {
+				// first try rentals.. no result try buy!
+				try {
+					$o = static::createHomeObjectByURL('http://www.funda.nl/huur/bla/'.$getURLorHouseID.'/');
+				} catch(Exception $e) {
+					try {
+						$o = static::createHomeObjectByURL('http://www.funda.nl/koop/bla/'.$getURLorHouseID.'/');	
+					} catch (Exception $e) {
+						return false;
+					}					
+				}
+				return $o;
+			}
 		}
 	}
 ?>
