@@ -34,7 +34,9 @@
 					// fotos
 						'arrPictures',
 					// verkoop type (koop of huren)
-						'strSaleType' // BUY || RENT
+						'strSaleType', // BUY || RENT
+					// lat lng coords (in array)
+						'arrLatLng'
 				)
 			),
 
@@ -175,7 +177,7 @@
 					$this->strCURLcontent, 	//content
 					$match					//result
 				);
-				$value	= $match[1][0];
+				$value	= strip_tags($match[1][0]);
 			} else {
 				$value = $this->variable($getKey);
 			}
@@ -210,17 +212,17 @@
 							// no match try to get from URL
 							if ($getVar == 'strCity') {
 								$arr = explode('/', str_replace('/'.$this->strHouseID.'/', '',  $this->strURL));
-								return ucFirst(end($arr));
+								return ucFirst(trim(end($arr)));
 							}
 							return;
 						}
 							
 						$arr = preg_split("/\\r\\n|\\r|\\n/", $arrMatches[1][0]);
-						$str = $arr[0];
+						$str = strip_tags($arr[0]);
 						if ($getVar == 'strPostalCode')
 							return substr($str, 0, 7);
 						else // city
-							return substr($str, 7, strlen($str));
+							return trim(substr($str, 7, strlen($str)));
 						break;
 
 					// Kenmerken block
@@ -238,7 +240,7 @@
 							$kenmerk_key	= $kenmerken[1][$i];
 							$kenmerk_value	= strip_tags($kenmerken[2][$i]);
 							$kenmerk_key	= strtolower(str_replace('&nbsp;', ' ', $kenmerk_key));
-							$kenmerk_value	= str_replace('&nbsp;', ' ', $kenmerk_value);
+							$kenmerk_value	= trim(str_replace('&nbsp;', ' ', strip_tags($kenmerk_value)));
 							switch ($getVar) {
 								case 'strSize':
 									if ($kenmerk_key == 'oppervlakte')
@@ -258,7 +260,6 @@
 									break;
 							}
 						}
-						# code...
 						break;
 
 					// Foto object
@@ -290,7 +291,7 @@
 						break;
 
 					// return BUY or RENT
-					case 'strSaleType' ;
+					case 'strSaleType' :
 						$arr = array_reverse(explode('/', $this->strURL));
 						if (is_array($arr) && count($arr)) {
 							$valPrev = false;
@@ -302,6 +303,16 @@
 								}
 								$valPrev = strtolower($val);
 							}
+						}
+						break;
+
+					case 'arrLatLng' :
+						$pattern		= '@Markers.LoadActivePropertyData\({"x":(.*?),"y":(.*?)}@is';
+						preg_match_all($pattern, $this->strCURLcontent, $arrMatches);
+						if (count($arrMatches) == 3) {
+							$arr = array('lat' => $arrMatches[2][0], 'lng' => $arrMatches[1][0]);
+							if ($arr['lat'] && $arr['lng'])
+								return $arr;
 						}
 						break;
 				}
