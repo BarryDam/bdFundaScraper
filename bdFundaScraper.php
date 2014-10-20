@@ -1,4 +1,7 @@
 <?php
+	/**
+	 * USES simple html dom : http://simplehtmldom.sourceforge.net/
+	 */
 	class bdFundaScraper
 	{
 		private $arrPageTypes	= array(
@@ -6,7 +9,7 @@
 			'HOME_PICTURES', // Pictures of HOME
 			'HOME_DESCRIPTION', // Description of HOME
 			'HOME_DETAILS', // Details of HOME
-			'LIST'  // funda page with search list of homes (example: http://www.funda.nl/koop/heerlen/)
+			'SEARCH_RESULTS'  // funda page with search results of homes (example: http://www.funda.nl/koop/heerlen/)
 		);
 		private $strCurrentPageType = false;
 
@@ -57,7 +60,26 @@
 				'arrByMethod' => array(
 					'strDetails'
 				)
-			)
+			),
+
+			'SEARCH_RESULTS' => array(
+				'arrByMethod' => array(
+					'strSortingMethod',
+					'strSortURL',
+					// returns an array 
+					// $arr[0] = array(
+					//		'strThumbURL' 	=> value
+					//		'strAddress' 	=> value
+					//		'strPlaats' 	=> value
+					//		'strSize'		=> value
+					//		'intRooms'		=> value
+					//		'strPrice'		=> value
+					//		'strLink'		=> value
+					//	);
+					//	$arr[1] etc..
+					'arrHouses'
+				)
+			),
 
 		);
 
@@ -361,8 +383,121 @@
 							return $block[0][0];
 						break;
 				}
-			} elseif ($this->strCurrentPageType == 'LIST') {
+			} elseif ($this->strCurrentPageType == 'SEARCH_RESULTS') {
+				switch ($getVar) {
+					case 'arrHouses':
+						if (! $this->strCURLcontent)
+							return;
+						$oSimpleHTMLDom = new simple_html_dom(
+							null, 
+							true, 		//lowercase
+							true, 		//forceTagsClosed 
+							'UTF-8', 	//
+							true, 		//$stripRN
+							"\r\n",		// $defaultBRText 
+							" "		//$defaultSpanText
+						);
+						if (! $oSimpleHTMLDom instanceof simple_html_dom) {
+							$oSimpleHTMLDom->clear();
+							return false;
+						}
 
+						$oSimpleHTMLDom->load($this->strCURLcontent, true, true);
+						$arrReturn = array();
+						foreach($oSimpleHTMLDom->find('ul.object-list') as $objUL){
+							foreach($objUL->find('li.even, li.odd') as $objLi){
+								//thumbs 
+								$strAfbeelding	= $objLi->find('img',0)->src;
+								// no image no image
+								$strAfbeelding 	= str_replace('/img/thumbs/thumb-geen-foto.gif', false, $strAfbeelding);
+								// address:
+								$strAddress 	= $objLi->find('div.specs h3 a',0)->innertext;
+								// plaats:
+								$strCity 	= preg_replace(
+									'@<span[^>]+>(.*?)</span>@is', 
+									'', 
+									$objLi->find('div.specs ul.properties-list li',0)->innertext
+								);
+								// suize: <span title="Woonopppervlakte">120&nbsp;m&sup2;</span>
+								$objSize = $objLi->find('div.specs ul.properties-list li span[title=Woonoppervlakte]',0);
+								$strSize	= ($objSize)
+									? str_replace(
+										'&nbsp;', 
+										' ', 
+										$objSize->innertext
+									) : false ;
+								// aantal kamers: <span title="Aantal kamers">4&nbsp;kamers</span>
+								$objRooms = $objLi->find('div.specs ul.properties-list li span[title^=Aantal]',0);
+								$intRooms	= ($objRooms)
+									? str_replace(
+										'&nbsp;', 
+										' ', 
+										$objRooms->innertext
+									) : false ;
+
+								// prijs: <span class="price">&euro;&nbsp;31.500</span>
+								$objPrice = $objLi->find('div.specs span.price-wrapper span.price',0);
+								$strPrice = ($objPrice)
+									? str_replace(
+										'&nbsp;', 
+										' ', 
+										$objPrice->innertext
+									) : false ;
+								// prijs toevoeging
+								$objPriceExtra = $objLi->find('div.specs span.price-wrapper abbr.price-ext',0);
+								if ($objPriceExtra)
+									$strPrice = trim($strPrice.' '.$objPriceExtra->innertext);
+
+								// makelaar
+								$objRealtor = $objLi->find('li .realtor',0);
+								$strRealtor		= ($objRealtor) 
+									? str_replace(
+										'&nbsp;',
+										' ', 
+										$objRealtor->innertext
+									) : false ;
+
+								// link
+								$objLink = $objLi->find('a',0);
+								$strLink = ($objLink) ? 'http://www.funda.nl'.$objLink->href : false ;
+
+								$arrReturn[] = array(
+									'strThumbURL' 	=> $strAfbeelding,
+									'strAddress' 	=> $strAddress,
+									'strPlaats' 	=> $strCity,
+									'strSize'		=> $strSize,
+									'intRooms'		=> $intRooms,
+									'strPrice'		=> $strPrice,
+									'strLink'		=> $strLink
+								);
+							}
+						}
+						return count($arrReturn) ? $arrReturn : false;
+
+
+						//		echo 'bdFundaScraper.php Line 400:<br /><pre>'.print_r($oSimpleHTMLDom->find('ul.object-list'),true).'</pre>';
+
+
+						// $arr = array();
+						//<img.*?src="(.*?)".*?
+
+						//*[@id="main"]/div/table/tbody/tr/td[1]/table/tbody/tr/td[2]/ul
+
+						break;
+
+					case 'strSortURL' :
+					case 'strSortingMethod' :
+						preg_match_all('@/sorteer-(.*?)/@is', $this->strURL, $arrSort);
+						if (empty($arrSort[0][0]))
+							return false;
+						if($getVar=='strSortURL') {
+							$sorteerurl		= str_replace($arrSort[0][0], '/', $this->strURL);
+							return preg_replace('@/p([0-9]+)/@is', '/', $sorteerurl);
+						} else {
+							return ($arrSort[1][0])? $arrSort[1][0] : false; 
+						}
+						break;
+				}
 			}
 		}
 
@@ -423,6 +558,13 @@
 				}
 				return $o;
 			}
+		}
+
+		public static function createSearchResultsObjectByURL($getURL)
+		{
+			if (strpos(strtolower($getURL), 'http://www.funda.nl/') === 0) 
+				$getURL = 'http://www.funda.nl/'.$getURL;
+			return new bdFundaScraper($getURL, 'SEARCH_RESULTS');
 		}
 	}
 ?>
