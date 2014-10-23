@@ -64,9 +64,15 @@
 
 			'SEARCH_RESULTS' => array(
 				'arrByMethod' => array(
-					'strSortingMethod',
-					'strSortURL',
-					// returns an array 
+					// City
+					'strCity',
+					// Current sorting method (used) 
+					'strSortingMethod',	'strURLNoSorting',					
+					// Sortin methods
+					'strSortAddressURL', 'strSortSizeURL', 'strSortRoomsURL', 'strSortRealtorURL', 'strSortPriceURL',
+					// navigation				
+					'strPreviousURL', 'strNextURL',	'intPageCurrent',					
+					// returns an array with objets object (STDCLASS) 
 					// $arr[0] = array(
 					//		'strThumbURL' 	=> value
 					//		'strAddress' 	=> value
@@ -384,41 +390,55 @@
 						break;
 				}
 			} elseif ($this->strCurrentPageType == 'SEARCH_RESULTS') {
+				
+				// simple html dom
+				$oSimpleHTMLDom = false;
+				if ($this->strCURLcontent) {
+					$oSimpleHTMLDom = new simple_html_dom(
+						null, 
+						true, 		//lowercase
+						true, 		//forceTagsClosed 
+						'UTF-8', 	//
+						true, 		//$stripRN
+						"\r\n",		// $defaultBRText 
+						" "		//$defaultSpanText
+					);
+					if (! $oSimpleHTMLDom instanceof simple_html_dom) {
+						$oSimpleHTMLDom->clear();
+						return false;
+					} else {
+						$oSimpleHTMLDom->load($this->strCURLcontent, true, true);	
+					}					
+				}
+				//  get variable
 				switch ($getVar) {
 					case 'arrHouses':
-						if (! $this->strCURLcontent)
+						if (! $oSimpleHTMLDom)
 							return;
-						$oSimpleHTMLDom = new simple_html_dom(
-							null, 
-							true, 		//lowercase
-							true, 		//forceTagsClosed 
-							'UTF-8', 	//
-							true, 		//$stripRN
-							"\r\n",		// $defaultBRText 
-							" "		//$defaultSpanText
-						);
-						if (! $oSimpleHTMLDom instanceof simple_html_dom) {
-							$oSimpleHTMLDom->clear();
-							return false;
-						}
-
-						$oSimpleHTMLDom->load($this->strCURLcontent, true, true);
-						$arrReturn = array();
-						foreach($oSimpleHTMLDom->find('ul.object-list') as $objUL){
-							foreach($objUL->find('li.even, li.odd') as $objLi){
+						$arrReturn		= array();
+						$arrObjectList	= $oSimpleHTMLDom->find('ul.object-list');
+						if (! $arrObjectList)
+							return;
+						foreach($arrObjectList as $objUL){
+							$arrLis = $objUL->find('li.even, li.odd');
+							if (! $arrLis)
+								continue;
+							foreach($arrLis as $objLi){
 								//thumbs 
 								$strAfbeelding	= $objLi->find('img',0)->src;
 								// no image no image
 								$strAfbeelding 	= str_replace('/img/thumbs/thumb-geen-foto.gif', false, $strAfbeelding);
-								// address:
+								// Address:
 								$strAddress 	= $objLi->find('div.specs h3 a',0)->innertext;
-								// plaats:
-								$strCity 	= preg_replace(
-									'@<span[^>]+>(.*?)</span>@is', 
-									'', 
-									$objLi->find('div.specs ul.properties-list li',0)->innertext
-								);
-								// suize: <span title="Woonopppervlakte">120&nbsp;m&sup2;</span>
+								// City:
+								$objCity = $objLi->find('div.specs ul.properties-list li',0);
+								$strCity 	= ($objCity) 
+									? preg_replace(
+										'@<span[^>]+>(.*?)</span>@is', 
+										'', 
+										$objCity->innertext
+									) : false ;
+								// Size: <span title="Woonopppervlakte">120&nbsp;m&sup2;</span>
 								$objSize = $objLi->find('div.specs ul.properties-list li span[title=Woonoppervlakte]',0);
 								$strSize	= ($objSize)
 									? str_replace(
@@ -426,7 +446,7 @@
 										' ', 
 										$objSize->innertext
 									) : false ;
-								// aantal kamers: <span title="Aantal kamers">4&nbsp;kamers</span>
+								// Rooms <span title="Aantal kamers">4&nbsp;kamers</span>
 								$objRooms = $objLi->find('div.specs ul.properties-list li span[title^=Aantal]',0);
 								$intRooms	= ($objRooms)
 									? str_replace(
@@ -435,7 +455,7 @@
 										$objRooms->innertext
 									) : false ;
 
-								// prijs: <span class="price">&euro;&nbsp;31.500</span>
+								// Price: <span class="price">&euro;&nbsp;31.500</span>
 								$objPrice = $objLi->find('div.specs span.price-wrapper span.price',0);
 								$strPrice = ($objPrice)
 									? str_replace(
@@ -443,12 +463,12 @@
 										' ', 
 										$objPrice->innertext
 									) : false ;
-								// prijs toevoeging
+								// Price Extra
 								$objPriceExtra = $objLi->find('div.specs span.price-wrapper abbr.price-ext',0);
 								if ($objPriceExtra)
 									$strPrice = trim($strPrice.' '.$objPriceExtra->innertext);
 
-								// makelaar
+								// Realtor
 								$objRealtor = $objLi->find('li .realtor',0);
 								$strRealtor		= ($objRealtor) 
 									? str_replace(
@@ -457,46 +477,118 @@
 										$objRealtor->innertext
 									) : false ;
 
-								// link
+								// House URL
 								$objLink = $objLi->find('a',0);
-								$strLink = ($objLink) ? 'http://www.funda.nl'.$objLink->href : false ;
+								$strHouseURL = ($objLink && $objLink->href) 
+									? (((strpos(strtolower($objLink->href), 'http://www.funda.nl/') !== 0) )?'http://www.funda.nl':'').$objLink->href 
+									: false ;
 
+								// returning array
 								$arrReturn[] = array(
 									'strThumbURL' 	=> $strAfbeelding,
-									'strAddress' 	=> $strAddress,
-									'strPlaats' 	=> $strCity,
+									'strAddress' 	=> preg_replace("/\s{2,}/", ' ', $strAddress),
+									'strCity'	 	=> preg_replace("/\s{2,}/", ' ', $strCity),
 									'strSize'		=> $strSize,
 									'intRooms'		=> $intRooms,
 									'strPrice'		=> $strPrice,
-									'strLink'		=> $strLink
+									'strRealtor'	=> $strRealtor,
+									'strHouseURL'	=> $strHouseURL
 								);
 							}
 						}
 						return count($arrReturn) ? $arrReturn : false;
-
-
-						//		echo 'bdFundaScraper.php Line 400:<br /><pre>'.print_r($oSimpleHTMLDom->find('ul.object-list'),true).'</pre>';
-
-
-						// $arr = array();
-						//<img.*?src="(.*?)".*?
-
-						//*[@id="main"]/div/table/tbody/tr/td[1]/table/tbody/tr/td[2]/ul
-
 						break;
 
-					case 'strSortURL' :
+					case 'strURLNoSorting' :
 					case 'strSortingMethod' :
 						preg_match_all('@/sorteer-(.*?)/@is', $this->strURL, $arrSort);
 						if (empty($arrSort[0][0]))
 							return false;
-						if($getVar=='strSortURL') {
+						if($getVar=='strURLNoSorting') {
 							$sorteerurl		= str_replace($arrSort[0][0], '/', $this->strURL);
 							return preg_replace('@/p([0-9]+)/@is', '/', $sorteerurl);
 						} else {
 							return ($arrSort[1][0])? $arrSort[1][0] : false; 
 						}
 						break;
+
+					case 'strSortAddressURL':
+					case 'strSortSizeURL':
+					case 'strSortRoomsURL':
+					case 'strSortRealtorURL':
+					case 'strSortPriceURL':
+						$strCurrentSortingMethod = $this->strSortingMethod;
+						$arrSortingMethods = array(
+							'strSortAddressURL'	=> (
+								($strCurrentSortingMethod == 'adres-op')
+									? 'sorteer-adres-af'
+									: 'sorteer-adres-op'
+							),
+							'strSortSizeURL'	=> (
+								($strCurrentSortingMethod == 'woonopp-op')
+									? 'sorteer-woonopp-af'
+									: 'sorteer-woonopp-op'
+							),
+							'strSortRoomsURL'	=> (
+								($strCurrentSortingMethod == 'kamers-op')
+									? 'sorteer-kamers-af'
+									: 'sorteer-kamers-op'
+							),
+							'strSortRealtorURL'	=> (
+								($strCurrentSortingMethod == 'makelaar-op')
+									? 'sorteer-makelaar-af'
+									: 'sorteer-makelaar-op'
+							),
+							'strSortPriceURL'	=> (
+								($strCurrentSortingMethod == 'prijs-op')
+									? 'sorteer-prijs-af'
+									: 'sorteer-prijs-op'
+							),
+						);
+						return (($this->strURLNoSorting)?$this->strURLNoSorting:$this->strURL).$arrSortingMethods[$getVar].'/';
+
+						break;
+
+					case 'strNextURL' :
+					case 'strPreviousURL':
+						if (! $oSimpleHTMLDom)
+							return;
+						$obj = ($getVar == 'strNextURL')
+							? $oSimpleHTMLDom->find('a[class=paging next]', 0)
+							: $oSimpleHTMLDom->find('a[class=paging prev]', 0);
+						if ($obj && $obj->href) {
+							return (strpos(strtolower($obj->href), 'http://www.funda.nl/') !== 0)
+								? 'http://www.funda.nl'.$obj->href
+								: $obj->href ;
+						}						
+						break;
+
+					
+					case 'intPageTotal' : // Funda haalt de paginatie met ajax op.. so we cannot scrape
+					case 'intPageCurrent':
+						if (! $oSimpleHTMLDom)
+							return;
+						// Navigation
+						$objNavigation = $oSimpleHTMLDom->find('ul.paging-list', 0);
+						if (! $objNavigation)
+							return;
+						$obj = ($getVar == 'intPageCurrent')
+							? $objNavigation->find('a.active', 0)
+							: $objNavigation->find('li', -1)->find('a', 0) ;
+						return ($obj) ? $obj->innertext : false ;
+						break;
+
+					case 'strCity':
+						if (! $oSimpleHTMLDom)
+							return;
+						$obj = $oSimpleHTMLDom->find('.path-nav .dropdown-box', -2);
+						if (! $obj) 
+							return;
+						$obj = $obj->find('.select-list-field', 0);
+						if ($obj) 
+							return strip_tags($obj->innertext);
+						break;
+
 				}
 			}
 		}
@@ -562,7 +654,7 @@
 
 		public static function createSearchResultsObjectByURL($getURL)
 		{
-			if (strpos(strtolower($getURL), 'http://www.funda.nl/') === 0) 
+			if (! strpos(strtolower($getURL), 'http://www.funda.nl/') === 0) 
 				$getURL = 'http://www.funda.nl/'.$getURL;
 			return new bdFundaScraper($getURL, 'SEARCH_RESULTS');
 		}
