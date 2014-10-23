@@ -71,7 +71,9 @@
 					// Sortin methods
 					'strSortAddressURL', 'strSortSizeURL', 'strSortRoomsURL', 'strSortRealtorURL', 'strSortPriceURL',
 					// navigation				
-					'strPreviousURL', 'strNextURL',	'intPageCurrent',					
+					'strPreviousURL', 'strNextURL',	'intPageCurrent',
+					// verkoop type (koop of huren)
+					'strSaleType', // BUY || RENT
 					// returns an array with objets object (STDCLASS) 
 					// $arr[0] = array(
 					//		'strThumbURL' 	=> value
@@ -586,7 +588,22 @@
 							return;
 						$obj = $obj->find('.select-list-field', 0);
 						if ($obj) 
-							return strip_tags($obj->innertext);
+							return trim(strip_tags($obj->innertext));
+						break;
+
+					case 'strSaleType' :
+						$arr = array_reverse(explode('/', $this->strURL));
+						if (is_array($arr) && count($arr)) {
+							$valPrev = false;
+							foreach ($arr as $val) {
+								if (strpos(strtolower($val), 'funda') !== false) {
+									return (in_array($valPrev, array('nieuwbouw','koop')))
+										? 'BUY' : 'RENT' ;
+									return $valPrev;
+								}
+								$valPrev = strtolower($val);
+							}
+						}
 						break;
 
 				}
