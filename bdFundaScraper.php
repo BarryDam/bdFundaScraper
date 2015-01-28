@@ -640,9 +640,11 @@
 				$new_url	= preg_replace('/.*Location:\s([^\n]+).*/ims', '$1', $rawContent);
 				if (strpos(strtolower($new_url), 'http://www.funda.nl/') !== 0) 
 					$new_url = 'http://www.funda.nl'.$new_url;
+				// if new url has the word zoeksuggestie.. house is not found so return false
+				if (strpos($new_url, 'zoeksuggestie') !== false)
+					return false;
 				$contents	= self::curl($new_url);
 			}
-			
 			return $contents;
 		}
 
