@@ -583,7 +583,7 @@
 					case 'strCity':
 						if (! $oSimpleHTMLDom)
 							return;
-						$obj = $oSimpleHTMLDom->find('.path-nav .dropdown-box', -2);
+						$obj = $oSimpleHTMLDom->find('.path-nav .location-select', -1);
 						if (! $obj) 
 							return;
 						$obj = $obj->find('.select-list-field', 0);
